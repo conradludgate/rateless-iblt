@@ -1,0 +1,9 @@
+[package]
+name = "rateless-iblt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.9"
+zerocopy = { version = "0.8", features = ["derive"] }
+sha2 = "0.10"
