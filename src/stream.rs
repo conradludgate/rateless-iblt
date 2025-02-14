@@ -1,18 +1,18 @@
 use std::{cmp::Reverse, collections::BinaryHeap};
 
 use rand::{rngs::SmallRng, SeedableRng};
-use zerocopy::little_endian;
+use zerocopy::{little_endian, FromBytes, Immutable, IntoBytes};
 
 use crate::{hash, next_index, Symbol};
 
 #[derive(Default, Clone)]
-pub struct SetStream {
-    heap: BinaryHeap<Reverse<Entry>>,
+pub struct SetStream<T> {
+    heap: BinaryHeap<Reverse<Entry<T>>>,
 }
 
-impl IntoIterator for SetStream {
-    type Item = Symbol;
-    type IntoIter = SetStreamIter;
+impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for SetStream<T> {
+    type Item = Symbol<T>;
+    type IntoIter = SetStreamIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         SetStreamIter {
@@ -23,14 +23,14 @@ impl IntoIterator for SetStream {
     }
 }
 
-impl Extend<[u8; 32]> for SetStream {
-    fn extend<T: IntoIterator<Item = [u8; 32]>>(&mut self, iter: T) {
+impl<T: FromBytes + IntoBytes + Immutable + Copy> Extend<T> for SetStream<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for value in iter {
-            let hash = hash(value);
+            let hash = hash(value.as_bytes());
             self.heap.push(Reverse(Entry {
                 next: 0,
                 value,
-                hash,
+                checksum: hash,
                 rng: SmallRng::from_seed(hash),
             }));
         }
@@ -38,42 +38,42 @@ impl Extend<[u8; 32]> for SetStream {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Entry {
+pub(crate) struct Entry<T> {
     pub(crate) next: u64,
-    pub(crate) value: [u8; 32],
-    pub(crate) hash: [u8; 32],
+    pub(crate) value: T,
+    pub(crate) checksum: [u8; 32],
     pub(crate) rng: SmallRng,
 }
 
-impl PartialOrd for Entry {
+impl<T> PartialOrd for Entry<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Entry {
+impl<T> PartialEq for Entry<T> {
     fn eq(&self, other: &Self) -> bool {
         self.next == other.next
     }
 }
 
-impl Ord for Entry {
+impl<T> Ord for Entry<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.next.cmp(&other.next)
     }
 }
 
-impl Eq for Entry {}
+impl<T> Eq for Entry<T> {}
 
 #[derive(Default)]
-pub struct SetStreamIter {
-    pub(crate) heap: BinaryHeap<Reverse<Entry>>,
-    index: u64,
-    size: usize,
+pub struct SetStreamIter<T> {
+    pub(crate) heap: BinaryHeap<Reverse<Entry<T>>>,
+    pub(crate) index: u64,
+    pub(crate) size: usize,
 }
 
-impl Iterator for SetStreamIter {
-    type Item = Symbol;
+impl<T: FromBytes + IntoBytes + Immutable + Copy> Iterator for SetStreamIter<T> {
+    type Item = Symbol<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut s = Symbol::default();
@@ -84,8 +84,8 @@ impl Iterator for SetStreamIter {
             }
 
             s += Symbol {
-                value: peek.0.value,
-                hash: peek.0.hash,
+                sum: peek.0.value,
+                checksum: peek.0.checksum,
                 count: little_endian::I64::new(1),
             };
 

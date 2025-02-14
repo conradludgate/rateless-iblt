@@ -1,18 +1,38 @@
-use std::cmp::Reverse;
+use std::{cmp::Reverse, collections::BinaryHeap};
 
 use rand::{rngs::SmallRng, SeedableRng};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{next_index, stream::Entry, SetStream, SetStreamIter, Symbol};
+use crate::{next_index, stream::Entry, SetStreamIter, Symbol};
 
-pub fn set_difference(a: impl IntoIterator<Item = Symbol>, b: SetStream) -> Option<Vec<[u8; 32]>> {
-    let mut decoded = vec![];
+#[derive(PartialEq, Debug)]
+pub enum Delta<T> {
+    InRemote(T),
+    InLocal(T),
+}
 
-    let mut a = a.into_iter();
-    let mut b = b.into_iter();
+pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
+    remote: impl IntoIterator<Item = Symbol<T>>,
+    local: impl IntoIterator<Item = Symbol<T>>,
+) -> Option<Vec<Delta<T>>> {
+    let mut a = remote.into_iter();
+    let mut b = local.into_iter();
+
+    let mut remote = SetStreamIter {
+        index: 0,
+        heap: BinaryHeap::new(),
+        size: 0,
+    };
+
+    let mut local = SetStreamIter {
+        index: 0,
+        heap: BinaryHeap::new(),
+        size: 0,
+    };
 
     let mut symbols = vec![];
     loop {
-        let cell = a.next()? - b.next()?;
+        let cell = a.next()? - b.next()? - remote.next()? + local.next()?;
         let pure = cell.is_pure_cell();
 
         symbols.push(cell);
@@ -22,9 +42,23 @@ pub fn set_difference(a: impl IntoIterator<Item = Symbol>, b: SetStream) -> Opti
         }
 
         loop {
-            let progress = peel_one_layer(&mut symbols, &mut b, &mut decoded);
+            let progress = peel_one_layer(&mut symbols, &mut remote, &mut local);
             if progress == 0 {
-                return Some(decoded);
+                return Some(
+                    (remote
+                        .heap
+                        .into_vec()
+                        .into_iter()
+                        .map(|e| Delta::InRemote(e.0.value)))
+                    .chain(
+                        local
+                            .heap
+                            .into_vec()
+                            .into_iter()
+                            .map(|e| Delta::InLocal(e.0.value)),
+                    )
+                    .collect(),
+                );
             } else if progress < symbols.len() {
                 continue;
             } else {
@@ -32,22 +66,25 @@ pub fn set_difference(a: impl IntoIterator<Item = Symbol>, b: SetStream) -> Opti
             }
         }
     }
-
-    // decoded
 }
 
-fn peel_one_layer(
-    symbols: &mut [Symbol],
-    b: &mut SetStreamIter,
-    decoded: &mut Vec<[u8; 32]>,
+fn peel_one_layer<T: FromBytes + IntoBytes + Immutable + Copy>(
+    symbols: &mut [Symbol<T>],
+    remote: &mut SetStreamIter<T>,
+    local: &mut SetStreamIter<T>,
 ) -> usize {
     let mut progress = symbols.len();
     for j in (0..symbols.len()).rev() {
         let symbol = symbols[j];
+
+        if j == 0 && symbol.checksum == [0; 32] {
+            return 0;
+        }
+
         if symbol.is_pure_cell() {
             progress = j;
 
-            let mut rng = SmallRng::from_seed(symbol.hash);
+            let mut rng = SmallRng::from_seed(symbol.checksum);
 
             // peel off this cell in all indices
             let mut i = 0u64;
@@ -58,13 +95,23 @@ fn peel_one_layer(
                 i = next_index(i, &mut rng);
             }
 
-            decoded.push(symbol.value);
-            b.heap.push(Reverse(Entry {
-                next: i,
-                value: symbol.value,
-                hash: symbol.hash,
-                rng,
-            }));
+            if symbol.count.get() == 1 {
+                remote.heap.push(Reverse(Entry {
+                    next: i,
+                    value: symbol.sum,
+                    checksum: symbol.checksum,
+                    rng,
+                }));
+            } else if symbol.count.get() == -1 {
+                local.heap.push(Reverse(Entry {
+                    next: i,
+                    value: symbol.sum,
+                    checksum: symbol.checksum,
+                    rng,
+                }));
+            } else {
+                unreachable!()
+            }
 
             // if we decode cell 0, we are finished
             if j == 0 {
