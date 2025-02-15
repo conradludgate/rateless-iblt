@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
+use bitvec::vec::BitVec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{IndexGenerator, EncoderIter, Symbol};
+use crate::{EncoderIter, IndexGenerator, Symbol};
 
 pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
     remote: impl IntoIterator<Item = Symbol<T>>,
@@ -24,6 +25,7 @@ pub struct Decoder<T> {
     remote: EncoderIter<T>,
     local: EncoderIter<T>,
     symbols: Vec<Symbol<T>>,
+    candidates: BitVec,
 }
 
 impl<T> Default for Decoder<T> {
@@ -32,6 +34,7 @@ impl<T> Default for Decoder<T> {
             remote: Default::default(),
             local: Default::default(),
             symbols: Default::default(),
+            candidates: BitVec::new(),
         }
     }
 }
@@ -47,57 +50,37 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
 
     pub fn push(&mut self, remote: Symbol<T>, local: Symbol<T>) {
         let cell = remote - local - self.remote.must_next() + self.local.must_next();
-        let pure = cell.is_pure_cell();
 
+        self.candidates.push(cell.is_pure_cell());
         self.symbols.push(cell);
 
-        if !pure {
-            return;
-        }
-
         loop {
-            let progress = self.peel_one_layer();
-            if progress == 0 {
+            let Some(i) = self.candidates.last_one() else {
                 break;
-            } else if progress < self.symbols.len() {
-                continue;
+            };
+
+            let symbol = self.symbols[i];
+            // peel off this cell in all indices
+            let mut index = IndexGenerator::new(symbol.checksum);
+            loop {
+                let Ok(j) = usize::try_from(index.current()) else {
+                    break;
+                };
+                let Some(s) = self.symbols.get_mut(j) else {
+                    break;
+                };
+                *s -= symbol;
+                self.candidates.set(j, s.is_pure_cell());
+                index.next();
+            }
+
+            if symbol.count.get().is_positive() {
+                self.remote
+                    .push_unchecked(symbol.sum, symbol.checksum, index);
             } else {
-                break;
+                self.local
+                    .push_unchecked(symbol.sum, symbol.checksum, index);
             }
         }
-    }
-
-    fn peel_one_layer(&mut self) -> usize {
-        let mut progress = self.symbols.len();
-        for j in (0..self.symbols.len()).rev() {
-            let symbol = self.symbols[j];
-            if symbol.is_pure_cell() {
-                progress = j;
-
-                // peel off this cell in all indices
-                let mut index = IndexGenerator::new(symbol.checksum);
-                loop {
-                    let i = index.current();
-                    let Ok(k) = usize::try_from(i) else { break };
-                    let Some(s) = self.symbols.get_mut(k) else {
-                        break;
-                    };
-                    *s -= symbol;
-                    index.next();
-                }
-
-                if symbol.count.get() == 1 {
-                    self.remote
-                        .push_unchecked(symbol.sum, symbol.checksum, index);
-                } else if symbol.count.get() == -1 {
-                    self.local
-                        .push_unchecked(symbol.sum, symbol.checksum, index);
-                } else {
-                    unreachable!()
-                }
-            }
-        }
-
-        progress
     }
 }

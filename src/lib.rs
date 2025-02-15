@@ -28,6 +28,9 @@ fn xor_mut<T: FromBytes + IntoBytes + Immutable>(a: &mut T, b: &T) {
 
 #[cfg(test)]
 mod tests {
+    use rand_core::{RngCore, SeedableRng};
+    use rand_xoshiro::Xoshiro256StarStar;
+
     use crate::{set_difference, Encoder};
 
     #[test]
@@ -67,5 +70,29 @@ mod tests {
         let (remote, local) = set_difference(remote.into_iter().take(2), local).unwrap();
         assert_eq!(remote, vec![9]);
         assert_eq!(local, vec![5]);
+    }
+
+    #[test]
+    fn huge() {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(0);
+
+        let mut remote = Encoder::default();
+        let mut local = Encoder::default();
+
+        for _ in 0..10_000_000 {
+            let i = rng.next_u64();
+            if i == 0 || i == 1 {
+                continue;
+            }
+            remote.extend([i]);
+            local.extend([i]);
+        }
+
+        remote.extend([0]);
+        local.extend([1]);
+
+        let (remote, local) = set_difference(remote.into_iter().take(2000), local).unwrap();
+        assert_eq!(remote, vec![0]);
+        assert_eq!(local, vec![1]);
     }
 }

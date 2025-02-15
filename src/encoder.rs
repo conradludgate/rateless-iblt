@@ -30,7 +30,7 @@ impl<T: IntoBytes + Immutable> Extend<T> for Encoder<T> {
         for (index, value) in self.entries[len..].iter().enumerate() {
             let checksum = hash(value.as_bytes());
             self.heap.push(Entry {
-                index,
+                index: index + len,
                 checksum,
                 index_rng: IndexGenerator::new(checksum),
             });
