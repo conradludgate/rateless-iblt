@@ -1,9 +1,8 @@
 use std::{cmp::Reverse, collections::BinaryHeap};
 
-use rand::{rngs::SmallRng, SeedableRng};
 use zerocopy::{little_endian, FromBytes, Immutable, IntoBytes};
 
-use crate::{hash, next_index, Symbol};
+use crate::{hash, IndexGenerator, Symbol};
 
 #[derive(Default, Clone)]
 pub struct SetStream<T> {
@@ -30,25 +29,28 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Extend<T> for SetStream<T> {
         let len = self.entries.len();
         self.entries.extend(iter);
         for (index, value) in self.entries[len..].iter().enumerate() {
-            let hash = hash(value.as_bytes());
+            let checksum = hash(value.as_bytes());
             self.heap.push(Reverse(Entry {
                 index,
-                checksum: hash,
-                rng: SmallRng::from_seed(hash),
-                next: 0,
+                checksum,
+                index_rng: IndexGenerator::new(checksum),
             }));
         }
     }
 }
 
 impl<T: FromBytes + IntoBytes + Immutable + Copy> SetStreamIter<T> {
-    pub(crate) fn push_unchecked(&mut self, value: T, checksum: [u8; 32]) {
+    pub(crate) fn push_unchecked(
+        &mut self,
+        value: T,
+        checksum: [u8; 16],
+        index_rng: IndexGenerator,
+    ) {
         let index = self.entries.len();
         self.heap.push(Reverse(Entry {
             index,
             checksum,
-            rng: SmallRng::from_seed(checksum),
-            next: 0,
+            index_rng,
         }));
         self.entries.push(value);
     }
@@ -57,7 +59,7 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> SetStreamIter<T> {
         let mut s = Symbol::default();
 
         while let Some(mut peek) = self.heap.peek_mut() {
-            if peek.0.next > self.index {
+            if peek.0.index_rng.current() > self.index {
                 break;
             }
 
@@ -67,7 +69,7 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> SetStreamIter<T> {
                 count: little_endian::I64::new(1),
             };
 
-            peek.0.next = next_index(peek.0.next, &mut peek.0.rng);
+            peek.0.index_rng.next();
         }
 
         self.index += 1;
@@ -78,10 +80,9 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> SetStreamIter<T> {
 #[derive(Debug, Clone)]
 struct Entry {
     index: usize,
-    checksum: [u8; 32],
+    checksum: [u8; 16],
 
-    rng: SmallRng,
-    next: u64,
+    index_rng: IndexGenerator,
 }
 
 impl PartialOrd for Entry {
@@ -92,13 +93,13 @@ impl PartialOrd for Entry {
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.next == other.next
+        self.index_rng.current() == other.index_rng.current()
     }
 }
 
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.next.cmp(&other.next)
+        self.index_rng.current().cmp(&other.index_rng.current())
     }
 }
 

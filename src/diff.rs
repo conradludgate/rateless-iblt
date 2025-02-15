@@ -1,18 +1,11 @@
-use rand::{rngs::SmallRng, SeedableRng};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{next_index, SetStreamIter, Symbol};
-
-#[derive(PartialEq, Debug)]
-pub enum Delta<T> {
-    InRemote(T),
-    InLocal(T),
-}
+use crate::{IndexGenerator, SetStreamIter, Symbol};
 
 pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
     remote: impl IntoIterator<Item = Symbol<T>>,
     local: impl IntoIterator<Item = Symbol<T>>,
-) -> Option<Vec<Delta<T>>> {
+) -> Option<(Vec<T>, Vec<T>)> {
     let mut decoder = Decoder::default();
 
     let mut a = remote.into_iter();
@@ -21,12 +14,7 @@ pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
     loop {
         decoder.push(a.next()?, b.next()?);
         if decoder.is_complete() {
-            let (remote, local) = decoder.consume();
-            return Some(
-                (remote.into_iter().map(Delta::InRemote))
-                    .chain(local.into_iter().map(Delta::InLocal))
-                    .collect(),
-            );
+            return Some(decoder.consume());
         }
     }
 }
@@ -85,23 +73,24 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
             if symbol.is_pure_cell() {
                 progress = j;
 
-                let mut rng = SmallRng::from_seed(symbol.checksum);
-
                 // peel off this cell in all indices
-                let mut i = 0u64;
+                let mut index = IndexGenerator::new(symbol.checksum);
                 loop {
+                    let i = index.current();
                     let Ok(k) = usize::try_from(i) else { break };
                     let Some(s) = self.symbols.get_mut(k) else {
                         break;
                     };
                     *s -= symbol;
-                    i = next_index(i, &mut rng);
+                    index.next();
                 }
 
                 if symbol.count.get() == 1 {
-                    self.remote.push_unchecked(symbol.sum, symbol.checksum);
+                    self.remote
+                        .push_unchecked(symbol.sum, symbol.checksum, index);
                 } else if symbol.count.get() == -1 {
-                    self.local.push_unchecked(symbol.sum, symbol.checksum);
+                    self.local
+                        .push_unchecked(symbol.sum, symbol.checksum, index);
                 } else {
                     unreachable!()
                 }

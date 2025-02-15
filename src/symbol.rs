@@ -8,7 +8,7 @@ use crate::{hash, xor_mut};
 #[repr(C)]
 pub struct Symbol<T> {
     pub(crate) sum: T,
-    pub(crate) checksum: [u8; 32],
+    pub(crate) checksum: [u8; 16],
     pub(crate) count: little_endian::I64,
 }
 
@@ -63,7 +63,7 @@ impl<T: IntoBytes + Immutable> Symbol<T> {
 
     pub(crate) fn is_empty_cell(&self) -> bool {
         self.count.get() == 0
-            && self.checksum == [0; 32]
+            && self.checksum == [0; 16]
             && self.sum.as_bytes().iter().all(|x| *x == 0)
     }
 }
