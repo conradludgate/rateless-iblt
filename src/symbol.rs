@@ -60,4 +60,10 @@ impl<T: IntoBytes + Immutable> Symbol<T> {
     pub(crate) fn is_pure_cell(&self) -> bool {
         self.count.get().abs() == 1 && hash(self.sum.as_bytes()) == self.checksum
     }
+
+    pub(crate) fn is_empty_cell(&self) -> bool {
+        self.count.get() == 0
+            && self.checksum == [0; 32]
+            && self.sum.as_bytes().iter().all(|x| *x == 0)
+    }
 }

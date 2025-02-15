@@ -93,8 +93,8 @@ mod tests {
         assert_eq!(
             diff,
             vec![
-                Delta::InRemote(4),
                 Delta::InRemote(7),
+                Delta::InRemote(4),
                 Delta::InRemote(10),
                 Delta::InLocal(6),
                 Delta::InLocal(5),
