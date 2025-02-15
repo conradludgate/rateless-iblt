@@ -8,5 +8,4 @@ rand_core = "0.9"
 zerocopy = { version = "0.8", default-features = false, features = ["derive"] }
 sha2 = { version = "0.10", default-features = false }
 rand_xoshiro = "0.7.0"
-bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
 libm = "0.2.11"

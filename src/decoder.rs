@@ -1,5 +1,4 @@
-use alloc::vec::Vec;
-use bitvec::vec::BitVec;
+use alloc::{collections::binary_heap::BinaryHeap, vec::Vec};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::{EncoderIter, IndexGenerator, Symbol};
@@ -25,7 +24,7 @@ pub struct Decoder<T> {
     remote: EncoderIter<T>,
     local: EncoderIter<T>,
     symbols: Vec<Symbol<T>>,
-    candidates: BitVec,
+    pure: BinaryHeap<usize>,
 }
 
 impl<T> Default for Decoder<T> {
@@ -34,7 +33,7 @@ impl<T> Default for Decoder<T> {
             remote: Default::default(),
             local: Default::default(),
             symbols: Default::default(),
-            candidates: BitVec::new(),
+            pure: BinaryHeap::new(),
         }
     }
 }
@@ -51,15 +50,17 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
     pub fn push(&mut self, remote: Symbol<T>, local: Symbol<T>) {
         let cell = remote - local - self.remote.must_next() + self.local.must_next();
 
-        self.candidates.push(cell.is_pure_cell());
+        if cell.is_pure_cell() {
+            self.pure.push(self.symbols.len());
+        }
         self.symbols.push(cell);
 
-        loop {
-            let Some(i) = self.candidates.last_one() else {
-                break;
-            };
-
+        while let Some(i) = self.pure.pop() {
             let symbol = self.symbols[i];
+            if !symbol.is_pure_cell() {
+                continue;
+            }
+
             // peel off this cell in all indices
             let mut index = IndexGenerator::new(symbol.checksum);
             loop {
@@ -69,12 +70,17 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
                 let Some(s) = self.symbols.get_mut(j) else {
                     break;
                 };
+
                 *s -= symbol;
-                self.candidates.set(j, s.is_pure_cell());
+                if s.is_pure_cell() {
+                    self.pure.push(j);
+                }
+
                 index.next();
             }
 
-            if symbol.count.get().is_positive() {
+            let count = symbol.count.get();
+            if count == 1 {
                 self.remote
                     .push_unchecked(symbol.sum, symbol.checksum, index);
             } else {

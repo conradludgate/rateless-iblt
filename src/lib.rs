@@ -91,7 +91,7 @@ mod tests {
         remote.extend([0]);
         local.extend([1]);
 
-        let (remote, local) = set_difference(remote.into_iter().take(2000), local).unwrap();
+        let (remote, local) = set_difference(remote.into_iter().take(5), local).unwrap();
         assert_eq!(remote, vec![0]);
         assert_eq!(local, vec![1]);
     }
