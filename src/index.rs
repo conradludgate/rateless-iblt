@@ -19,12 +19,13 @@ impl IndexGenerator {
     }
 
     pub(crate) fn next(&mut self) {
-        self.index += c_inv(self.index as f64, self.rng.next_u64()).ceil() as u64
+        self.index += libm::ceil(c_inv(self.index as f64, self.rng.next_u64())) as u64
     }
 }
 
 fn c_inv(i: f64, r: u64) -> f64 {
-    (i + 1.5) * (f64::powi(2.0, 32) / f64::sqrt(r as f64) - 1.0)
+    const U: f64 = (1u64 << 32) as f64;
+    (i + 1.5) * (U / libm::sqrt(r as f64) - 1.0)
 }
 
 #[cfg(test)]
