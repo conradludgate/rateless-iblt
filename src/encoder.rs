@@ -1,13 +1,13 @@
-use alloc::{collections::BinaryHeap, vec::Vec};
+use alloc::vec::Vec;
 
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{hash, IndexGenerator, Symbol};
+use crate::{binaryheap, hash, IndexGenerator, Symbol};
 
 #[derive(Default, Clone)]
 pub struct Encoder<T> {
     entries: Vec<T>,
-    heap: BinaryHeap<Entry>,
+    heap: Vec<Entry>,
 }
 
 impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
@@ -30,74 +30,36 @@ impl<T: IntoBytes + Immutable> Extend<T> for Encoder<T> {
         for (index, value) in self.entries[len..].iter().enumerate() {
             let checksum = hash(value.as_bytes());
             self.heap.push(Entry {
-                index: index + len,
+                index: IndexGenerator::new(checksum),
+                entry_index: index + len,
                 checksum,
-                index_rng: IndexGenerator::new(checksum),
             });
         }
     }
 }
 
-impl<T: IntoBytes + Immutable> EncoderIter<T> {
-    pub(crate) fn push_unchecked(
-        &mut self,
-        value: T,
-        checksum: [u8; 16],
-        index_rng: IndexGenerator,
-    ) {
-        let index = self.entries.len();
-        self.heap.push(Entry {
-            index,
-            checksum,
-            index_rng,
-        });
-        self.entries.push(value);
-    }
-}
-
-impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
-    pub(crate) fn must_next(&mut self) -> Symbol<T> {
-        let mut s = Symbol::default();
-
-        while let Some(mut p) = self.heap.peek_mut() {
-            if p.index_rng.current() > self.index {
-                break;
-            }
-
-            s.add_entry(&self.entries[p.index], &p.checksum);
-            p.index_rng.next();
-        }
-
-        self.index += 1;
-        s
-    }
-}
-
 #[derive(Debug, Clone)]
 struct Entry {
-    index: usize,
+    index: IndexGenerator,
+    entry_index: usize,
     checksum: [u8; 16],
-    index_rng: IndexGenerator,
 }
 
 impl PartialOrd for Entry {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+        Some(Ord::cmp(self, other))
     }
 }
 
 impl PartialEq for Entry {
     fn eq(&self, other: &Self) -> bool {
-        self.index_rng.current() == other.index_rng.current()
+        self.index.current() == other.index.current()
     }
 }
 
 impl Ord for Entry {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.index_rng
-            .current()
-            .cmp(&other.index_rng.current())
-            .reverse()
+        Ord::cmp(&self.index.current(), &other.index.current()).reverse()
     }
 }
 
@@ -105,7 +67,7 @@ impl Eq for Entry {}
 
 pub struct EncoderIter<T> {
     pub(crate) entries: Vec<T>,
-    heap: BinaryHeap<Entry>,
+    heap: Vec<Entry>,
     index: u64,
 }
 
@@ -116,6 +78,71 @@ impl<T> Default for EncoderIter<T> {
             heap: Default::default(),
             index: Default::default(),
         }
+    }
+}
+
+impl<T: IntoBytes + Immutable> EncoderIter<T> {
+    pub(crate) fn push_unchecked(&mut self, value: T, checksum: [u8; 16], index: IndexGenerator) {
+        let entry_index = self.entries.len();
+        self.heap.push(Entry {
+            entry_index,
+            checksum,
+            index,
+        });
+        binaryheap::sift_up(&mut self.heap, 0, entry_index);
+        self.entries.push(value);
+    }
+}
+
+const THRESHOLD: u64 = 2;
+
+impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
+    #[cold]
+    fn update_many(&mut self) -> Symbol<T> {
+        let mut s = Symbol::default();
+
+        for p in self.heap.iter_mut() {
+            if p.index.current() > self.index {
+                continue;
+            }
+
+            s.add_entry(&self.entries[p.entry_index], &p.checksum);
+            p.index.next();
+        }
+
+        // only build the binary heap when it's time to switch strategy
+        if self.index == THRESHOLD {
+            binaryheap::rebuild(&mut self.heap);
+        }
+
+        s
+    }
+
+    fn update_few(&mut self) -> Symbol<T> {
+        let mut s = Symbol::default();
+
+        while let Some(p) = self.heap.first_mut() {
+            if p.index.current() > self.index {
+                break;
+            }
+
+            s.add_entry(&self.entries[p.entry_index], &p.checksum);
+            p.index.next();
+            binaryheap::sift_down(&mut self.heap, 0);
+        }
+
+        s
+    }
+
+    pub(crate) fn must_next(&mut self) -> Symbol<T> {
+        let s = if self.index <= THRESHOLD {
+            self.update_many()
+        } else {
+            self.update_few()
+        };
+
+        self.index += 1;
+        s
     }
 }
 

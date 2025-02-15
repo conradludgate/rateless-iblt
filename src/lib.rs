@@ -9,6 +9,7 @@ mod decoder;
 mod encoder;
 mod index;
 mod symbol;
+mod binaryheap;
 
 pub use decoder::set_difference;
 pub use encoder::{Encoder, EncoderIter};

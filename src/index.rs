@@ -1,9 +1,10 @@
 use rand_core::{RngCore, SeedableRng};
 
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub(crate) struct IndexGenerator {
-    rng: rand_xoshiro::Xoroshiro128Plus,
     index: u64,
+    rng: rand_xoshiro::Xoroshiro128Plus,
 }
 
 impl IndexGenerator {
