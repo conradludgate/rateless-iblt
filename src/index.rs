@@ -34,7 +34,7 @@ mod tests {
     use crate::hash;
 
     use super::*;
-    use std::collections::BTreeMap;
+    use alloc::collections::BTreeMap;
 
     fn p(i: f64) -> f64 {
         (1.0 + 0.5 * i).recip()

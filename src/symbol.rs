@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 use zerocopy::{little_endian, FromBytes, FromZeros, Immutable, IntoBytes};
 
@@ -53,6 +53,14 @@ impl<T: FromBytes + IntoBytes + Immutable> AddAssign for Symbol<T> {
         xor_mut(&mut self.sum, &rhs.sum);
         xor_mut(&mut self.checksum, &rhs.checksum);
         self.count += rhs.count;
+    }
+}
+
+impl<T: FromBytes + IntoBytes + Immutable> Symbol<T> {
+    pub(crate) fn add_entry(&mut self, value: &T, checksum: &[u8; 16]) {
+        xor_mut(&mut self.sum, value);
+        xor_mut(&mut self.checksum, checksum);
+        self.count += 1;
     }
 }
 

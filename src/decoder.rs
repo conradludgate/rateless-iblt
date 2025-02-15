@@ -1,6 +1,7 @@
+use alloc::vec::Vec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{IndexGenerator, SetStreamIter, Symbol};
+use crate::{IndexGenerator, EncoderIter, Symbol};
 
 pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
     remote: impl IntoIterator<Item = Symbol<T>>,
@@ -20,8 +21,8 @@ pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
 }
 
 pub struct Decoder<T> {
-    remote: SetStreamIter<T>,
-    local: SetStreamIter<T>,
+    remote: EncoderIter<T>,
+    local: EncoderIter<T>,
     symbols: Vec<Symbol<T>>,
 }
 
