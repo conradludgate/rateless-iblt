@@ -1,7 +1,7 @@
-use alloc::{collections::binary_heap::BinaryHeap, vec::Vec};
+use alloc::vec::Vec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{EncoderIter, IndexGenerator, Symbol};
+use crate::{binaryheap, EncoderIter, IndexGenerator, Symbol};
 
 pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
     remote: impl IntoIterator<Item = Symbol<T>>,
@@ -24,7 +24,7 @@ pub struct Decoder<T> {
     remote: EncoderIter<T>,
     local: EncoderIter<T>,
     symbols: Vec<Symbol<T>>,
-    pure: BinaryHeap<usize>,
+    pure_heap: Vec<usize>,
 }
 
 impl<T> Default for Decoder<T> {
@@ -33,7 +33,7 @@ impl<T> Default for Decoder<T> {
             remote: Default::default(),
             local: Default::default(),
             symbols: Default::default(),
-            pure: BinaryHeap::new(),
+            pure_heap: Vec::new(),
         }
     }
 }
@@ -51,11 +51,14 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
         let cell = remote - local - self.remote.must_next() + self.local.must_next();
 
         if cell.is_pure_cell() {
-            self.pure.push(self.symbols.len());
+            self.pure_heap.push(self.symbols.len());
         }
         self.symbols.push(cell);
 
-        while let Some(i) = self.pure.pop() {
+        while !self.pure_heap.is_empty() {
+            let i = self.pure_heap.swap_remove(0);
+            binaryheap::sift_down(&mut self.pure_heap, 0);
+
             let symbol = self.symbols[i];
             if !symbol.is_pure_cell() {
                 continue;
@@ -73,7 +76,9 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
 
                 *s -= symbol;
                 if s.is_pure_cell() {
-                    self.pure.push(j);
+                    let old_index = self.pure_heap.len();
+                    self.pure_heap.push(j);
+                    binaryheap::sift_up(&mut self.pure_heap, 0, old_index);
                 }
 
                 index.next();

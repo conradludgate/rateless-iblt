@@ -1,6 +1,6 @@
 //! Taken with modifications from std::collections::BinaryHeap.
 
-pub(crate) fn sift_up<T: Ord + Clone>(v: &mut [T], start: usize, pos: usize) -> usize {
+pub(crate) fn sift_up<T: Ord>(v: &mut [T], start: usize, pos: usize) -> usize {
     // Take out the value at `pos` and create a hole.
     let mut hole = Hole::new(v, pos);
 
@@ -19,7 +19,7 @@ pub(crate) fn sift_up<T: Ord + Clone>(v: &mut [T], start: usize, pos: usize) -> 
 
 /// Take an element at `pos` and move it down the heap,
 /// while its children are larger.
-pub(crate) fn sift_down_range<T: Ord + Clone>(v: &mut [T], pos: usize, end: usize) {
+pub(crate) fn sift_down_range<T: Ord>(v: &mut [T], pos: usize, end: usize) {
     let mut hole = Hole::new(v, pos);
     let mut child = 2 * hole.pos() + 1;
 
@@ -42,12 +42,12 @@ pub(crate) fn sift_down_range<T: Ord + Clone>(v: &mut [T], pos: usize, end: usiz
     }
 }
 
-pub(crate) fn sift_down<T: Ord + Clone>(v: &mut [T], pos: usize) {
+pub(crate) fn sift_down<T: Ord>(v: &mut [T], pos: usize) {
     let len = v.len();
     sift_down_range(v, pos, len);
 }
 
-pub(crate) fn rebuild<T: Ord + Clone>(v: &mut [T]) {
+pub(crate) fn rebuild<T: Ord>(v: &mut [T]) {
     let mut n = v.len() / 2;
     while n > 0 {
         n -= 1;
@@ -59,12 +59,12 @@ pub(crate) fn rebuild<T: Ord + Clone>(v: &mut [T]) {
 /// (because it was moved from or duplicated).
 /// In drop, `Hole` will restore the slice by filling the hole
 /// position with the value that was originally removed.
-struct Hole<'a, T: 'a + Clone> {
+struct Hole<'a, T: 'a> {
     data: &'a mut [T],
     pos: usize,
 }
 
-impl<'a, T: Clone> Hole<'a, T> {
+impl<'a, T> Hole<'a, T> {
     /// Creates a new `Hole` at index `pos`.
     ///
     /// Unsafe because pos must be within the data slice.
