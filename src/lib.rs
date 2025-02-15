@@ -5,11 +5,11 @@ extern crate alloc;
 
 use sha2::Digest;
 
+mod binaryheap;
 mod decoder;
 mod encoder;
 mod index;
 mod symbol;
-mod binaryheap;
 
 pub use decoder::set_difference;
 pub use encoder::{Encoder, EncoderIter};
@@ -75,25 +75,32 @@ mod tests {
 
     #[test]
     fn huge() {
+        const N: u64 = 10_000_000;
+        const M: u64 = 8;
+
         let mut rng = Xoshiro256StarStar::seed_from_u64(0);
 
         let mut remote = Encoder::default();
         let mut local = Encoder::default();
 
-        for _ in 0..10_000_000 {
+        for _ in 0..N {
             let i = rng.next_u64();
-            if i == 0 || i == 1 {
+            if i < M * 2 {
                 continue;
             }
             remote.extend([i]);
             local.extend([i]);
         }
+        for i in 0..M {
+            remote.extend([i]);
+        }
+        for j in M..2 * M {
+            local.extend([j]);
+        }
 
-        remote.extend([0]);
-        local.extend([1]);
-
-        let (remote, local) = set_difference(remote.into_iter().take(5), local).unwrap();
-        assert_eq!(remote, vec![0]);
-        assert_eq!(local, vec![1]);
+        let (remote, local) =
+            set_difference(remote.into_iter().take(5 * M as usize), local).unwrap();
+        assert_eq!(remote.len(), M as usize);
+        assert_eq!(local.len(), M as usize);
     }
 }

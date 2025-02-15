@@ -7,7 +7,6 @@ use crate::{binaryheap, hash, IndexGenerator, Symbol};
 #[derive(Default, Clone)]
 pub struct Encoder<T> {
     entries: Vec<T>,
-    heap: Vec<Entry>,
 }
 
 impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
@@ -15,9 +14,19 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
     type IntoIter = EncoderIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
+        let mut heap = Vec::with_capacity(self.entries.len());
+        for (entry_index, value) in self.entries.iter().enumerate() {
+            let checksum = hash(value.as_bytes());
+            heap.push(Entry {
+                index: IndexGenerator::new(checksum),
+                entry_index,
+                checksum,
+            });
+        }
+
         EncoderIter {
             entries: self.entries,
-            heap: self.heap,
+            heap,
             index: 0,
         }
     }
@@ -25,16 +34,7 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
 
 impl<T: IntoBytes + Immutable> Extend<T> for Encoder<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        let len = self.entries.len();
         self.entries.extend(iter);
-        for (index, value) in self.entries[len..].iter().enumerate() {
-            let checksum = hash(value.as_bytes());
-            self.heap.push(Entry {
-                index: IndexGenerator::new(checksum),
-                entry_index: index + len,
-                checksum,
-            });
-        }
     }
 }
 
@@ -94,9 +94,20 @@ impl<T: IntoBytes + Immutable> EncoderIter<T> {
     }
 }
 
-const THRESHOLD: u64 = 2;
-
 impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
+    fn threshold(&self) -> u64 {
+        if self.entries.len() < 2 {
+            return 0;
+        }
+
+        // based on the intersection of
+        // * y = n (linear search)
+        // * y = p(x) * log2(n) (binary heap search)
+        // solution: p(x) = n/(1+0.5x),
+        //           x = 2log2(n) - 2
+        u64::from(usize::ilog2(self.entries.len())) * 2
+    }
+
     #[cold]
     fn update_many(&mut self) -> Symbol<T> {
         let mut s = Symbol::default();
@@ -111,7 +122,7 @@ impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
         }
 
         // only build the binary heap when it's time to switch strategy
-        if self.index == THRESHOLD {
+        if self.index == self.threshold() {
             binaryheap::rebuild(&mut self.heap);
         }
 
@@ -135,7 +146,7 @@ impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
     }
 
     pub(crate) fn must_next(&mut self) -> Symbol<T> {
-        let s = if self.index <= THRESHOLD {
+        let s = if self.index <= self.threshold() {
             self.update_many()
         } else {
             self.update_few()
