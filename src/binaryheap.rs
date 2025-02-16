@@ -37,7 +37,7 @@ pub(crate) fn sift_down_range<T: Ord>(v: &mut [T], pos: usize, end: usize) {
         child = 2 * hole.pos() + 1;
     }
 
-    if child == end - 1 && hole.element() < hole.get(child) {
+    if child + 1 == end && hole.element() < hole.get(child) {
         hole.move_to(child);
     }
 }

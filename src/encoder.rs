@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{binaryheap, hash, IndexGenerator, Symbol};
+use crate::{binaryheap, hash, index::IndexGenerator, Symbol};
 
 #[derive(Default, Clone)]
 pub struct Encoder<T> {

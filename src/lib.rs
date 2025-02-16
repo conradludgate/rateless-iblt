@@ -3,8 +3,6 @@
 #[cfg_attr(test, macro_use)]
 extern crate alloc;
 
-use sha2::Digest;
-
 mod binaryheap;
 mod decoder;
 mod encoder;
@@ -13,12 +11,11 @@ mod symbol;
 
 pub use decoder::set_difference;
 pub use encoder::{Encoder, EncoderIter};
-pub(crate) use index::IndexGenerator;
 pub use symbol::Symbol;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 fn hash(x: &[u8]) -> [u8; 16] {
-    sha2::Sha256::digest(x)[..16].try_into().unwrap()
+    blake3::hash(x).as_bytes()[..16].try_into().unwrap()
 }
 
 fn xor_mut<T: FromBytes + IntoBytes + Immutable>(a: &mut T, b: &T) {
@@ -42,7 +39,7 @@ mod tests {
         let mut local = Encoder::default();
         local.extend([1, 2, 3, 5]);
 
-        let (remote, local) = set_difference(remote.into_iter().take(3), local).unwrap();
+        let (remote, local) = set_difference(remote.into_iter().take(4), local).unwrap();
         assert_eq!(remote, vec![4]);
         assert_eq!(local, vec![5]);
     }
@@ -56,8 +53,8 @@ mod tests {
         local.extend([1, 2, 3, 5, 6, 8, 9]);
 
         let (remote, local) = set_difference(remote.into_iter().take(12), local).unwrap();
-        assert_eq!(remote, vec![4, 7, 10]);
-        assert_eq!(local, vec![6, 9, 5])
+        assert_eq!(remote, vec![7, 4, 10]);
+        assert_eq!(local, vec![5, 9, 6])
     }
 
     #[test]
@@ -68,7 +65,7 @@ mod tests {
         let mut local = Encoder::default();
         local.extend([1, 2, 3, 4, 5, 6, 7, 8, 10]);
 
-        let (remote, local) = set_difference(remote.into_iter().take(2), local).unwrap();
+        let (remote, local) = set_difference(remote.into_iter().take(4), local).unwrap();
         assert_eq!(remote, vec![9]);
         assert_eq!(local, vec![5]);
     }

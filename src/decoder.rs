@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-use crate::{binaryheap, EncoderIter, IndexGenerator, Symbol};
+use crate::{binaryheap, index::IndexGenerator, EncoderIter, Symbol};
 
-pub fn set_difference<T: FromBytes + IntoBytes + Immutable + Copy>(
+pub fn set_difference<T: FromBytes + IntoBytes + Immutable>(
     remote: impl IntoIterator<Item = Symbol<T>>,
     local: impl IntoIterator<Item = Symbol<T>>,
 ) -> Option<(Vec<T>, Vec<T>)> {
@@ -38,7 +38,7 @@ impl<T> Default for Decoder<T> {
     }
 }
 
-impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
+impl<T: FromBytes + IntoBytes + Immutable> Decoder<T> {
     pub fn is_complete(&self) -> bool {
         !self.symbols.is_empty() && self.symbols[0].is_empty_cell()
     }
@@ -59,33 +59,26 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
             let i = self.pure_heap.swap_remove(0);
             binaryheap::sift_down(&mut self.pure_heap, 0);
 
-            let symbol = self.symbols[i];
+            let symbol = self.symbols[i].copy();
             if !symbol.is_pure_cell() {
                 continue;
             }
 
             // peel off this cell in all indices
             let mut index = IndexGenerator::new(symbol.checksum);
-            loop {
-                let Ok(j) = usize::try_from(index.current()) else {
-                    break;
-                };
-                let Some(s) = self.symbols.get_mut(j) else {
-                    break;
-                };
+            while let Some(s) = index_mut_u64(&mut self.symbols, index.current()) {
+                *s -= &symbol;
 
-                *s -= symbol;
                 if s.is_pure_cell() {
                     let old_index = self.pure_heap.len();
-                    self.pure_heap.push(j);
+                    self.pure_heap.push(index.current() as usize);
                     binaryheap::sift_up(&mut self.pure_heap, 0, old_index);
                 }
 
                 index.next();
             }
 
-            let count = symbol.count.get();
-            if count == 1 {
+            if symbol.count == 1 {
                 self.remote
                     .push_unchecked(symbol.sum, symbol.checksum, index);
             } else {
@@ -94,4 +87,8 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> Decoder<T> {
             }
         }
     }
+}
+
+fn index_mut_u64<T>(s: &mut [T], i: u64) -> Option<&mut T> {
+    s.get_mut(usize::try_from(i).ok()?)
 }
