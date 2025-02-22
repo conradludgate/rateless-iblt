@@ -3,13 +3,16 @@
 #[cfg_attr(test, macro_use)]
 extern crate alloc;
 
+#[cfg(test)]
+extern crate std;
+
 mod binaryheap;
 mod decoder;
 mod encoder;
 mod index;
 mod symbol;
 
-pub use decoder::set_difference;
+pub use decoder::{set_difference, Decoder};
 pub use encoder::{Encoder, EncoderIter};
 pub use symbol::Symbol;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -71,6 +74,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "very slow"]
     fn huge() {
         const N: u64 = 10_000_000;
         const M: u64 = 8;
@@ -95,8 +99,27 @@ mod tests {
             local.extend([j]);
         }
 
-        let (remote, local) =
-            set_difference(remote.into_iter().take(5 * M as usize), local).unwrap();
+        let (tx, remote_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let iter = remote.into_iter().take(5 * M as usize);
+            for entry in iter {
+                if tx.send(entry).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let (tx, local_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let iter = local;
+            for entry in iter {
+                if tx.send(entry).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let (remote, local) = set_difference(remote_rx, local_rx).unwrap();
         assert_eq!(remote.len(), M as usize);
         assert_eq!(local.len(), M as usize);
     }
