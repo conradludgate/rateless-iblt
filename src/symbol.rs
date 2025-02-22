@@ -1,14 +1,15 @@
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
-use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes};
+use zerocopy::{little_endian, FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::{hash, xor_mut};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromBytes, Immutable, IntoBytes, Unaligned, KnownLayout)]
+#[repr(C)]
 pub struct Symbol<T> {
     pub(crate) sum: T,
     pub(crate) checksum: [u8; 16],
-    pub(crate) count: i64,
+    pub(crate) count: little_endian::I64,
 }
 
 impl<T: FromZeros> Default for Symbol<T> {
@@ -34,7 +35,8 @@ impl<T: FromBytes + IntoBytes + Immutable> SubAssign<&Symbol<T>> for Symbol<T> {
     fn sub_assign(&mut self, rhs: &Self) {
         xor_mut(&mut self.sum, &rhs.sum);
         xor_mut(&mut self.checksum, &rhs.checksum);
-        self.count = self.count.wrapping_sub(rhs.count);
+        self.count
+            .set(self.count.get().wrapping_sub(rhs.count.get()));
     }
 }
 
@@ -51,7 +53,8 @@ impl<T: FromBytes + IntoBytes + Immutable> AddAssign for Symbol<T> {
     fn add_assign(&mut self, rhs: Self) {
         xor_mut(&mut self.sum, &rhs.sum);
         xor_mut(&mut self.checksum, &rhs.checksum);
-        self.count = self.count.wrapping_add(rhs.count);
+        self.count
+            .set(self.count.get().wrapping_add(rhs.count.get()));
     }
 }
 
@@ -59,7 +62,7 @@ impl<T: FromBytes + IntoBytes + Immutable> Symbol<T> {
     pub(crate) fn add_entry(&mut self, value: &T, checksum: &[u8; 16]) {
         xor_mut(&mut self.sum, value);
         xor_mut(&mut self.checksum, checksum);
-        self.count = self.count.wrapping_add(1);
+        self.count.set(self.count.get().wrapping_add(1));
     }
 
     pub(crate) fn copy(&self) -> Self {
@@ -73,7 +76,7 @@ impl<T: FromBytes + IntoBytes + Immutable> Symbol<T> {
 
 impl<T: IntoBytes + Immutable> Symbol<T> {
     pub(crate) fn is_pure_cell(&self) -> bool {
-        self.count.abs() == 1 && hash(self.sum.as_bytes()) == self.checksum
+        self.count.get().abs() == 1 && hash(self.sum.as_bytes()) == self.checksum
     }
 
     pub(crate) fn is_empty_cell(&self) -> bool {

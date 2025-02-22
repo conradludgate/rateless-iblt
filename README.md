@@ -43,12 +43,12 @@ let mut bob = bob.into_iter();
 let mut decoder = Decoder::default();
 
 // bob connects to alice
-let alice = connect_to_alice();
+let mut alice = connect_to_alice();
 
 // bob drives the decoder
 while !decoder.is_complete() {
-    let alice_symbol = alice.next();
-    let bob_symbol = bob.next();
+    let alice_symbol = alice.next().unwrap();
+    let bob_symbol = bob.next().unwrap();
 
     decoder.push(alice_symbol, bob_symbol);
 }
