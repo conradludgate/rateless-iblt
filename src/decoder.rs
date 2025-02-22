@@ -25,6 +25,8 @@ pub struct Decoder<T> {
     local: EncoderIter<T>,
     symbols: Vec<Symbol<T>>,
     pure_heap: Vec<usize>,
+    remote_count: u64,
+    local_count: u64,
 }
 
 impl<T> Default for Decoder<T> {
@@ -34,6 +36,8 @@ impl<T> Default for Decoder<T> {
             local: Default::default(),
             symbols: Default::default(),
             pure_heap: Vec::new(),
+            remote_count: 0,
+            local_count: 0,
         }
     }
 }
@@ -47,7 +51,15 @@ impl<T: FromBytes + IntoBytes + Immutable> Decoder<T> {
         (self.remote.entries, self.local.entries)
     }
 
-    pub fn push(&mut self, remote: Symbol<T>, local: Symbol<T>) {
+    pub fn push(&mut self, mut remote: Symbol<T>, mut local: Symbol<T>) {
+        if self.symbols.is_empty() {
+            self.remote_count = remote.count.get() as u64;
+            self.local_count = local.count.get() as u64;
+        } else {
+            remote.decode_count(self.symbols.len(), self.remote_count);
+            local.decode_count(self.symbols.len(), self.remote_count);
+        }
+
         let cell = remote - local - self.remote.must_next() + self.local.must_next();
 
         if cell.is_pure_cell() {

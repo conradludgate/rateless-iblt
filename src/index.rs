@@ -29,6 +29,10 @@ fn c_inv(i: f64, r: u64) -> f64 {
     (i + 1.5) * (U / libm::sqrt(r as f64) - 1.0)
 }
 
+pub(crate) fn p(i: f64) -> f64 {
+    (1.0 + 0.5 * i).recip()
+}
+
 #[cfg(test)]
 mod tests {
     use zerocopy::IntoBytes;
@@ -37,10 +41,6 @@ mod tests {
 
     use super::*;
     use alloc::collections::BTreeMap;
-
-    fn p(i: f64) -> f64 {
-        (1.0 + 0.5 * i).recip()
-    }
 
     #[test]
     fn test_distribution() {

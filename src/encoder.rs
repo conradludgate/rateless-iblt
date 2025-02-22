@@ -28,6 +28,7 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
             entries: self.entries,
             heap,
             index: 0,
+            compress: true,
         }
     }
 }
@@ -69,6 +70,7 @@ pub struct EncoderIter<T> {
     pub(crate) entries: Vec<T>,
     heap: Vec<Entry>,
     index: u64,
+    compress: bool,
 }
 
 impl<T> Default for EncoderIter<T> {
@@ -77,6 +79,7 @@ impl<T> Default for EncoderIter<T> {
             entries: Default::default(),
             heap: Default::default(),
             index: Default::default(),
+            compress: false,
         }
     }
 }
@@ -146,11 +149,15 @@ impl<T: FromBytes + IntoBytes + Immutable> EncoderIter<T> {
     }
 
     pub(crate) fn must_next(&mut self) -> Symbol<T> {
-        let s = if self.index <= self.threshold() {
+        let mut s = if self.index <= self.threshold() {
             self.update_many()
         } else {
             self.update_few()
         };
+
+        if self.compress && self.index > 0 {
+            s.encode_count(self.index, self.entries.len());
+        }
 
         self.index += 1;
         s

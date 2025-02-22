@@ -83,3 +83,17 @@ impl<T: IntoBytes + Immutable> Symbol<T> {
         self.count == 0 && self.checksum == [0; 16]
     }
 }
+
+impl<T> Symbol<T> {
+    pub(crate) fn encode_count(&mut self, i: u64, n: usize) {
+        let p = libm::ceil(crate::index::p(i as f64) * (n as f64)) as i64;
+        let d = p - self.count.get();
+        self.count.set(d);
+    }
+
+    pub(crate) fn decode_count(&mut self, i: usize, n: u64) {
+        let p = libm::ceil(crate::index::p(i as f64) * (n as f64)) as i64;
+        let d = p - self.count.get();
+        self.count.set(d);
+    }
+}
