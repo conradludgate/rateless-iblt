@@ -29,6 +29,8 @@ fn xor_mut<T: FromBytes + IntoBytes + Immutable>(a: &mut T, b: &T) {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeSet, vec::Vec};
+
     use rand_core::{RngCore, SeedableRng};
     use rand_xoshiro::Xoshiro256StarStar;
 
@@ -122,5 +124,33 @@ mod tests {
         let (remote, local) = set_difference(remote_rx, local_rx).unwrap();
         assert_eq!(remote.len(), M as usize);
         assert_eq!(local.len(), M as usize);
+    }
+
+    #[test]
+    fn proptest() {
+        arbtest::arbtest(|u| {
+            let inputs_a: Vec<u32> = u.arbitrary_iter()?.take(100).collect::<Result<_, _>>()?;
+            let inputs_b: Vec<u32> = u.arbitrary_iter()?.take(100).collect::<Result<_, _>>()?;
+
+            let set_a = BTreeSet::<u32>::from_iter(inputs_a.iter().copied());
+            let set_b = BTreeSet::<u32>::from_iter(inputs_b.iter().copied());
+
+            let diff_a: Vec<u32> = set_a.difference(&set_b).copied().collect();
+            let diff_b: Vec<u32> = set_b.difference(&set_a).copied().collect();
+
+            let (mut actual_diff_a, mut actual_diff_b) = set_difference(
+                Encoder::from_iter(inputs_a).into_iter().take(10000),
+                Encoder::from_iter(inputs_b),
+            )
+            .unwrap();
+
+            actual_diff_a.sort_unstable();
+            actual_diff_b.sort_unstable();
+
+            assert_eq!(diff_a, actual_diff_a);
+            assert_eq!(diff_b, actual_diff_b);
+
+            Ok(())
+        });
     }
 }

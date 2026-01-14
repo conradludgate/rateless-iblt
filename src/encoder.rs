@@ -4,9 +4,17 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::{binaryheap, hash, index::IndexGenerator, Symbol};
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Encoder<T> {
     entries: Vec<T>,
+}
+
+impl<T> Default for Encoder<T> {
+    fn default() -> Self {
+        Self {
+            entries: Default::default(),
+        }
+    }
 }
 
 impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
@@ -36,6 +44,14 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
 impl<T: IntoBytes + Immutable> Extend<T> for Encoder<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         self.entries.extend(iter);
+    }
+}
+
+impl<T: IntoBytes + Immutable> FromIterator<T> for Encoder<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Encoder {
+            entries: Vec::from_iter(iter),
+        }
     }
 }
 
