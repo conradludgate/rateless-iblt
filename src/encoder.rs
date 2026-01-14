@@ -21,7 +21,12 @@ impl<T: FromBytes + IntoBytes + Immutable + Copy> IntoIterator for Encoder<T> {
     type Item = Symbol<T>;
     type IntoIter = EncoderIter<T>;
 
-    fn into_iter(self) -> Self::IntoIter {
+    fn into_iter(mut self) -> Self::IntoIter {
+        // entries must be unique.
+        self.entries
+            .sort_unstable_by(|a, b| Ord::cmp(a.as_bytes(), b.as_bytes()));
+        self.entries.dedup_by(|a, b| a.as_bytes() == b.as_bytes());
+
         let mut heap = Vec::with_capacity(self.entries.len());
         for (entry_index, value) in self.entries.iter().enumerate() {
             let checksum = hash(value.as_bytes());
