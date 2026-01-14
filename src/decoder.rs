@@ -57,7 +57,7 @@ impl<T: FromBytes + IntoBytes + Immutable> Decoder<T> {
             self.local_count = local.count.get() as u64;
         } else {
             remote.decode_count(self.symbols.len(), self.remote_count);
-            local.decode_count(self.symbols.len(), self.remote_count);
+            local.decode_count(self.symbols.len(), self.local_count);
         }
 
         let cell = remote - local - self.remote.must_next() + self.local.must_next();
